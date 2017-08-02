@@ -1,31 +1,62 @@
 package com.stevemutungi.votinglocationfareestimator;
 
+import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.AppCompatButton;
 import android.support.v7.widget.AppCompatEditText;
 import android.view.View;
 
-import com.stevemutungi.votinglocationfareestimator.lib.exceptions.LocationNotFoundException;
-import com.stevemutungi.votinglocationfareestimator.lib.libs.fare.UberFareEstimates;
-import com.stevemutungi.votinglocationfareestimator.lib.libs.fare.UberUtils;
-import com.stevemutungi.votinglocationfareestimator.lib.libs.maps.google.GoogleMapsUtils;
-import com.stevemutungi.votinglocationfareestimator.lib.maps.GoogleMapLocation;
+import com.stevemutungi.votinglocationfareestimator.app.intents.AppIntents;
+import com.stevemutungi.votinglocationfareestimator.datamodel.maps.GoogleMapLocation;
+import com.stevemutungi.votinglocationfareestimator.datamodel.maps.uber.fare.UberFareEstimates;
+import com.stevemutungi.votinglocationfareestimator.exceptions.LocationNotFoundException;
+import com.stevemutungi.votinglocationfareestimator.utils.fare.UberUtils;
+import com.stevemutungi.votinglocationfareestimator.utils.maps.GoogleMapsUtils;
 
 import org.json.JSONException;
 
 import java.io.IOException;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String GOOGLE_MAP_KEY = "AIzaSyBaxFNzeT-EGC02s42HCMmO2jS39RbfBf4";
+
+    private ProgressDialog mProgress;
+
     private AppCompatEditText mAEtFromLocation;
     private AppCompatEditText mAEtToLocation;
-    private AppCompatEditText mABtCalculateEstimate;
+    private AppCompatButton mABtCalculateEstimate;
 
+    private BroadcastReceiver receiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent.getAction().equals(AppIntents.ACTION_GETTING_LOCATION)) {
+                showProgressDialog("Getting location", "Checking existence of your location", false, false);
+            }
+            if (intent.getAction().equals(AppIntents.ACTION_GOT_LOCATION)) {
+                tryCloseProgressDialog();
+
+            }
+            if (intent.getAction().equals(AppIntents.ACTION_LOCATION_NOT_FOUND)) {
+                tryCloseProgressDialog();
+                showAlertDialog(MainActivity.this, "Error", intent.getStringExtra("message"), null, null, null, null);
+            }
+            if (intent.getAction().equals(AppIntents.ACTION_HTTP_ERROR)) {
+                tryCloseProgressDialog();
+                showAlertDialog(MainActivity.this, "Error", intent.getStringExtra("message"), null, null, null, null);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,13 +64,28 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         initViews();
+
+        registerReceiver(receiver, new IntentFilter(AppIntents.ACTION_GETTING_LOCATION));
+        registerReceiver(receiver, new IntentFilter(AppIntents.ACTION_GOT_LOCATION));
+        registerReceiver(receiver, new IntentFilter(AppIntents.ACTION_LOCATION_NOT_FOUND));
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(receiver);
     }
 
     private void initViews() {
 
         mAEtFromLocation = (AppCompatEditText) findViewById(R.id.from_location);
         mAEtToLocation = (AppCompatEditText) findViewById(R.id.to_location);
-        mABtCalculateEstimate = (AppCompatEditText) findViewById(R.id.estimate_fare);
+        mABtCalculateEstimate = (AppCompatButton) findViewById(R.id.estimate_fare);
 
         mABtCalculateEstimate.setOnClickListener(estimateFareClickListener);
 
@@ -47,8 +93,7 @@ public class MainActivity extends AppCompatActivity {
 
     public GoogleMapLocation getGoogleMapLocationDetails(String locationName) {
         try {
-
-            return new GoogleMapsUtils().getLocationDetails(locationName, "AIzaSyBaxFNzeT-EGC02s42HCMmO2jS39RbfBf4");
+            return new GoogleMapsUtils(MainActivity.this).getLocationDetails(locationName, GOOGLE_MAP_KEY);
 
         } catch (LocationNotFoundException e) {
             e.printStackTrace();
@@ -68,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
         double fromLong = fromLocation.getLongitude();
         double toLat = toLocation.getLatitude();
         double toLong = toLocation.getLongitude();
-        return new UberUtils("sadBp3notgJiDIQRd8HnzB8Bb7kEo3Pzksu_hYbz").getFareEstimate(fromLat, fromLong, toLat, toLong);
+        return new UberUtils(MainActivity.this, "sadBp3notgJiDIQRd8HnzB8Bb7kEo3Pzksu_hYbz").getFareEstimate(fromLat, fromLong, toLat, toLong);
     }
 
     View.OnClickListener estimateFareClickListener = new View.OnClickListener() {
@@ -78,7 +123,15 @@ public class MainActivity extends AppCompatActivity {
             String fromLocaton = mAEtFromLocation.getText().toString();
 
             if (isValidAddress(toLocation, fromLocaton)) {
-                Snackbar.make(view, "Getting fare estimate", Snackbar.LENGTH_LONG).show();
+
+                //Multi-Thread!
+                ExecutorService executors = Executors.newFixedThreadPool(2);
+                executors.submit( ()-> getGoogleMapLocationDetails(toLocation));
+                executors.submit( ()-> getGoogleMapLocationDetails(fromLocaton));
+                executors.shutdown();
+
+            } else {
+                Snackbar.make(view, "Resolve error to get fare estimate", Snackbar.LENGTH_LONG).show();
             }
         }
     };
@@ -143,5 +196,48 @@ public class MainActivity extends AppCompatActivity {
         }
 
         alert.show();
+    }
+
+
+    public ProgressDialog getProgressDialog() {
+        if (mProgress == null) {
+            mProgress = new ProgressDialog(MainActivity.this);
+        }
+        return mProgress;
+    }
+
+    /**
+     * Show a progress dialog
+     *
+     * @param title
+     * @param message
+     * @param cancellable
+     * @param cancellableOnTouchOutside
+     */
+
+    public void showProgressDialog(String title, String message, boolean cancellable,
+                                   boolean cancellableOnTouchOutside) {
+
+        if (getProgressDialog().isShowing()) {
+            getProgressDialog().dismiss();
+        }
+
+        getProgressDialog().setTitle(title);
+        getProgressDialog().setMessage(message);
+
+        getProgressDialog().setCancelable(cancellable);
+        getProgressDialog().setCanceledOnTouchOutside(cancellableOnTouchOutside);
+
+        getProgressDialog().show();
+    }
+
+    /**
+     * Try to close the progress dialog associated with the app main activity
+     */
+
+    public void tryCloseProgressDialog() {
+        if (getProgressDialog().isShowing()) {
+            getProgressDialog().dismiss();
+        }
     }
 }
