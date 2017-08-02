@@ -34,12 +34,12 @@ public class GoogleMapsUtils {
 
 
         String rawJSON = new GoogleMapsHttpExecutor(builtGetUrl, "").doGetHttpRequest();
-        JSONObject objJSON = new JSONObject(rawJSON);
-        JSONObject serverJSON = (JSONObject) objJSON;
-        String status = (String) serverJSON.get("status");
+        JSONObject responseJSON = new JSONObject(rawJSON);
+
+        String status = responseJSON.getString("status");
 
         if (status.equalsIgnoreCase(STATUS_OK)) {
-            JSONArray results = (JSONArray) serverJSON.get("results");
+            JSONArray results = responseJSON.getJSONArray("results");
 
             if (results.length() > 0) {
                 JSONObject locationDetails = (JSONObject) results.get(0);

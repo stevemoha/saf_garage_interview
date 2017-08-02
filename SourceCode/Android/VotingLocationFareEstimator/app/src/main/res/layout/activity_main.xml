@@ -45,6 +45,7 @@
 
             <android.support.v7.widget.AppCompatButton
                 android:layout_width="match_parent"
+                android:id="@+id/estimate_fare"
                 android:layout_height="wrap_content"
                 android:background="@color/colorPrimaryDark"
                 android:text="@string/compute_estimates"
