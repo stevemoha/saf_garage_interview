@@ -1,6 +1,6 @@
-# saf_garage_interview
+# Introduction
 A Project About Safaricom interview for Senior Software Engineer.
 
-<p>Directory Organization</p>
+## Work Instructions
 
-Kindly open the Wiki Page to view detailed directory organization and details.
+Kindly open the Wiki Page to view detailed directory organization and other details.
